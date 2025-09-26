@@ -105,7 +105,26 @@ async def on_rtc_message(sid, data):
     await sio.emit("rtc-message", data, room=room_id, skip_sid=sid)
 
 
+@sio.on("rtc-text")
+async def on_rtc_text(sid, data):
+    """Receive rtc-text, print it, and broadcast to the room (except sender)."""
+    if isinstance(data, str):
+        try:
+            payload = json.loads(data)
+        except Exception:
+            payload = {"text": data}
+    elif isinstance(data, dict):
+        payload = data
+    else:
+        payload = {"text": str(data)}
+
+    room_id = payload.get("roomId")
+    text = payload.get("text") or payload.get("message") or ""
+    print(f"[RTC-TEXT room={room_id or '-'} sid={sid}] {text}")
+    if room_id:
+        await sio.emit("rtc-text", payload, room=room_id, skip_sid=sid)
+
+
 if __name__ == "__main__":
     # Run the ASGI app with uvicorn on the desired port
     uvicorn.run(asgi_app, host="0.0.0.0", port=SERVER_PORT)
-
