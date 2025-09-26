@@ -144,7 +144,7 @@ def translate_with_ollama(text: str) -> str:
     """
     try:
         host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-        model = os.getenv("OLLAMA_MODEL", "llama3.1")
+        model = os.getenv("OLLAMA_MODEL", "llama3.2")
         prompt = (
             "You are a translator. If the input is Korean, translate it to natural, colloquial English. "
             "If the input is English, translate it to natural, colloquial Korean. "
