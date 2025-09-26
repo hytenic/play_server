@@ -1,11 +1,13 @@
 import json
 import logging
+import os
 from typing import Dict, Set
 
 import socketio
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import requests
 
 
 # Server config
@@ -107,7 +109,7 @@ async def on_rtc_message(sid, data):
 
 @sio.on("rtc-text")
 async def on_rtc_text(sid, data):
-    """Receive rtc-text, print it, and broadcast to the room (except sender)."""
+    """Receive rtc-text, print it, translate via Ollama, then broadcast (except sender)."""
     if isinstance(data, str):
         try:
             payload = json.loads(data)
@@ -121,8 +123,48 @@ async def on_rtc_text(sid, data):
     room_id = payload.get("roomId")
     text = payload.get("text") or payload.get("message") or ""
     print(f"[RTC-TEXT room={room_id or '-'} sid={sid}] {text}")
+
+    # Translate with Ollama (if available). Fallback to original on failure.
+    translated = translate_with_ollama(text)
+    if translated:
+        payload["translatedText"] = translated
+        # Replace text so receivers see translated content directly
+        payload["text"] = translated
+
     if room_id:
         await sio.emit("rtc-text", payload, room=room_id, skip_sid=sid)
+
+
+def translate_with_ollama(text: str) -> str:
+    """Translate English<->Korean using local Ollama.
+
+    - Model: set with OLLAMA_MODEL (default: 'llama3.1')
+    - Host: set with OLLAMA_HOST (default: 'http://localhost:11434')
+    Returns empty string on error.
+    """
+    try:
+        host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+        model = os.getenv("OLLAMA_MODEL", "llama3.1")
+        prompt = (
+            "You are a translator. If the input is Korean, translate it to natural, colloquial English. "
+            "If the input is English, translate it to natural, colloquial Korean. "
+            "Preserve meaning and tone. Output only the translation with no extra words.\n\n"
+            f"Input: {text}"
+        )
+        resp = requests.post(
+            f"{host}/api/generate",
+            json={"model": model, "prompt": prompt, "stream": False},
+            timeout=60,
+        )
+        if resp.status_code != 200:
+            logging.error("Ollama error %s: %s", resp.status_code, resp.text)
+            return ""
+        data = resp.json()
+        out = data.get("response", "").strip()
+        return out
+    except Exception:
+        logging.exception("Failed to translate via Ollama")
+        return ""
 
 
 if __name__ == "__main__":
