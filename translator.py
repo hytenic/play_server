@@ -3,7 +3,7 @@ import logging
 import os
 from typing import Dict, List
 
-import requests
+import httpx
 
 
 DEFAULT_HOST = "http://localhost:11434"
@@ -15,7 +15,7 @@ class TranslatorAgent:
         self.user_id = user_id
         self.history: List[Dict[str, str]] = []
 
-    def translate(self, text: str) -> str:
+    async def translate(self, text: str) -> str:
         host = os.getenv("OLLAMA_HOST", DEFAULT_HOST).rstrip("/")
         model = os.getenv("OLLAMA_MODEL", DEFAULT_MODEL)
         prompt = (
@@ -26,11 +26,11 @@ class TranslatorAgent:
             f"Input: {text}"
         )
         try:
-            resp = requests.post(
-                f"{host}/api/generate",
-                json={"model": model, "prompt": prompt, "stream": False},
-                timeout=60,
-            )
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    f"{host}/api/generate",
+                    json={"model": model, "prompt": prompt, "stream": False},
+                )
         except Exception:
             logging.exception("Failed to call Ollama")
             return ""
@@ -57,9 +57,9 @@ def ensure_agent(user_id: str) -> TranslatorAgent:
     return agents[user_id]
 
 
-def translate_text(user_id: str, text: str) -> str:
+async def translate_text(user_id: str, text: str) -> str:
     agent = ensure_agent(user_id)
-    return agent.translate(text)
+    return await agent.translate(text)
 
 
 def release_agent(user_id: str) -> None:
