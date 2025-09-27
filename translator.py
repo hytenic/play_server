@@ -1,8 +1,7 @@
 import asyncio
-import json
 import logging
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import Optional, Tuple
 
 import httpx
 
@@ -52,7 +51,6 @@ class TranslatorAgent:
             raise
 
     async def translate(self, text: str) -> str:
-        # 호출된 텍스트를 큐에 적재하고 결과 Future를 반환한다.
         if not self._task or self._task.done():
             self.start()
         loop = asyncio.get_running_loop()
@@ -63,7 +61,7 @@ class TranslatorAgent:
     async def _call_ollama(self, text: str) -> str:
         host = os.getenv("OLLAMA_HOST", DEFAULT_HOST).rstrip("/")
         model = os.getenv("OLLAMA_MODEL", DEFAULT_MODEL)
-        prompt = self._get_prompt(text)
+        prompt = self._build_prompt(text)
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(
@@ -77,7 +75,7 @@ class TranslatorAgent:
             return ""
         return data.get("response", "").strip()
 
-    def _get_prompt(self, text: str) -> str:
+    def _build_prompt(self, text: str) -> str:
         return (
             "You are a translator. If the input is Korean, translate it to natural, colloquial English. "
             "If the input is English, translate it to natural, colloquial Korean. "
@@ -94,23 +92,3 @@ class TranslatorAgent:
             if not future.done():
                 future.set_result("")
             self._queue.task_done()
-
-
-agents: Dict[str, TranslatorAgent] = {}
-
-
-def ensure_agent(user_id: str) -> TranslatorAgent:
-    if user_id not in agents:
-        agents[user_id] = TranslatorAgent(user_id)
-    return agents[user_id]
-
-
-async def translate_text(user_id: str, text: str) -> str:
-    agent = ensure_agent(user_id)
-    return await agent.translate(text)
-
-
-async def release_agent(user_id: str) -> None:
-    agent = agents.pop(user_id, None)
-    if agent:
-        await agent.stop()

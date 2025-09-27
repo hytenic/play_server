@@ -7,7 +7,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from translator import ensure_agent, release_agent, translate_text
+from agent_manager import AgentManager
 
 SERVER_PORT = 5004
 
@@ -26,6 +26,8 @@ app.add_middleware(
 
 asgi_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
+agent_manager = AgentManager()
+
 
 @app.get("/")
 async def root():
@@ -35,7 +37,7 @@ async def root():
 @sio.event
 async def connect(sid, environ, auth):
     logging.info(f"connect sid={sid}")
-    agent = ensure_agent(sid)
+    agent = agent_manager.ensure_agent(sid)
     agent.start()
 
 
@@ -44,7 +46,7 @@ async def disconnect(sid):
     rooms = sid_rooms.pop(sid, set())
     for room_id in rooms:
         logging.info(f"disconnect, room:{room_id}")
-    await release_agent(sid)
+    await agent_manager.release(sid)
 
 
 @sio.on("join")
@@ -90,7 +92,7 @@ async def on_rtc_text(sid, data):
     text = payload.get("text") or payload.get("message") or ""
     logging.info(f"[RTC-TEXT room={room_id or '-'} sid={sid}] {text}")
 
-    translated = await translate_text(sid, text)
+    translated = await agent_manager.translate(sid, text)
     if translated:
         payload["translatedText"] = translated
         payload["text"] = translated
