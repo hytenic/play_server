@@ -1,29 +1,66 @@
-import os
-import requests
+import json
 import logging
+import os
+from typing import Dict, List
+
+import requests
 
 
-def translate_with_ollama(text: str) -> str:
-    try:
-        host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-        model = os.getenv("OLLAMA_MODEL", "llama3.2")
+DEFAULT_HOST = "http://localhost:11434"
+DEFAULT_MODEL = "llama3.2"
+
+
+class TranslatorAgent:
+    def __init__(self, user_id: str):
+        self.user_id = user_id
+        self.history: List[Dict[str, str]] = []
+
+    def translate(self, text: str) -> str:
+        host = os.getenv("OLLAMA_HOST", DEFAULT_HOST).rstrip("/")
+        model = os.getenv("OLLAMA_MODEL", DEFAULT_MODEL)
         prompt = (
             "You are a translator. If the input is Korean, translate it to natural, colloquial English. "
             "If the input is English, translate it to natural, colloquial Korean. "
             "Preserve meaning and tone. Output only the translation with no extra words.\n\n"
+            f"Context: {json.dumps(self.history, ensure_ascii=False)}\n"
             f"Input: {text}"
         )
-        resp = requests.post(
-            f"{host}/api/generate",
-            json={"model": model, "prompt": prompt, "stream": False},
-            timeout=60,
-        )
+        try:
+            resp = requests.post(
+                f"{host}/api/generate",
+                json={"model": model, "prompt": prompt, "stream": False},
+                timeout=60,
+            )
+        except Exception:
+            logging.exception("Failed to call Ollama")
+            return ""
         if resp.status_code != 200:
             logging.error("Ollama error %s: %s", resp.status_code, resp.text)
             return ""
-        data = resp.json()
+        try:
+            data = resp.json()
+        except Exception:
+            logging.exception("Invalid Ollama response")
+            return ""
         out = data.get("response", "").strip()
+        if out:
+            self.history.append({"input": text, "output": out})
         return out
-    except Exception:
-        logging.exception("Failed to translate via Ollama")
-        return ""
+
+
+agents: Dict[str, TranslatorAgent] = {}
+
+
+def ensure_agent(user_id: str) -> TranslatorAgent:
+    if user_id not in agents:
+        agents[user_id] = TranslatorAgent(user_id)
+    return agents[user_id]
+
+
+def translate_text(user_id: str, text: str) -> str:
+    agent = ensure_agent(user_id)
+    return agent.translate(text)
+
+
+def release_agent(user_id: str) -> None:
+    agents.pop(user_id, None)

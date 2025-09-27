@@ -7,7 +7,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from translator import translate_with_ollama
+from translator import ensure_agent, release_agent, translate_text
 
 SERVER_PORT = 5004
 MAX_CLIENTS_PER_ROOM = 2
@@ -37,6 +37,7 @@ async def root():
 @sio.event
 async def connect(sid, environ, auth):
     logging.info(f"connect sid={sid}")
+    ensure_agent(sid)
 
 
 @sio.event
@@ -48,6 +49,7 @@ async def disconnect(sid):
             if room_counts[room_id] <= 0:
                 del room_counts[room_id]
         print(f"disconnect, room:{room_id} count:{room_counts.get(room_id, 0)}")
+    release_agent(sid)
 
 
 @sio.on("join")
@@ -103,7 +105,7 @@ async def on_rtc_text(sid, data):
     text = payload.get("text") or payload.get("message") or ""
     print(f"[RTC-TEXT room={room_id or '-'} sid={sid}] {text}")
 
-    translated = translate_with_ollama(text)
+    translated = translate_text(sid, text)
     if translated:
         payload["translatedText"] = translated
         payload["text"] = translated
