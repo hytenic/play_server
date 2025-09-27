@@ -35,7 +35,8 @@ async def root():
 @sio.event
 async def connect(sid, environ, auth):
     logging.info(f"connect sid={sid}")
-    ensure_agent(sid)
+    agent = ensure_agent(sid)
+    agent.start()
 
 
 @sio.event
@@ -43,7 +44,7 @@ async def disconnect(sid):
     rooms = sid_rooms.pop(sid, set())
     for room_id in rooms:
         logging.info(f"disconnect, room:{room_id}")
-    release_agent(sid)
+    await release_agent(sid)
 
 
 @sio.on("join")
