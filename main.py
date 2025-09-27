@@ -62,12 +62,11 @@ async def on_join(sid, room_id: str):
 @sio.on("rtc-message")
 async def on_rtc_message(sid, data):
     room_id = None
-    payload = {}
-    if isinstance(data, str):
-        try:
-            payload = json.loads(data)
-        except Exception as e:
-            logging.error(f"Failed to parse RTC message: {e}")
+    try:
+        payload = json.loads(data)
+    except Exception as e:
+        payload = {}
+        logging.error(f"Failed to parse RTC message: {e}")
 
     room_id = payload.get("roomId")
     if not room_id:
@@ -78,27 +77,12 @@ async def on_rtc_message(sid, data):
 
 @sio.on("rtc-text")
 async def on_rtc_text(sid, data):
-    if isinstance(data, str):
-        try:
-            payload = json.loads(data)
-        except Exception:
-            payload = {"text": data}
-    elif isinstance(data, dict):
-        payload = data
-    else:
-        payload = {"text": str(data)}
+    room_id = data.get("roomId")
+    text = data.get("text")
 
-    room_id = payload.get("roomId")
-    text = payload.get("text") or payload.get("message") or ""
-    logging.info(f"[RTC-TEXT room={room_id or '-'} sid={sid}] {text}")
-
-    translated = await agent_manager.translate(sid, text)
-    if translated:
-        payload["translatedText"] = translated
-        payload["text"] = translated
-
+    data["text"] = await agent_manager.translate(sid, text)
     if room_id:
-        await sio.emit("rtc-text", payload, room=room_id, skip_sid=sid)
+        await sio.emit("rtc-text", data, room=room_id, skip_sid=sid)
 
 
 if __name__ == "__main__":
