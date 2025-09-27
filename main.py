@@ -9,22 +9,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 
-
-# Server config
 SERVER_PORT = 5004
 MAX_CLIENTS_PER_ROOM = 2
 
-
-# In-memory room tracking (simple process-local state)
 room_counts: Dict[str, int] = {}
 sid_rooms: Dict[str, Set[str]] = {}
 
-
-# Socket.IO server (ASGI, CORS open like the original)
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
-
-# FastAPI app for optional HTTP endpoints and CORS
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -34,15 +26,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# Wrap FastAPI with Socket.IO ASGI app
 asgi_app = socketio.ASGIApp(sio, other_asgi_app=app)
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
-    # Mirror the Node.js startup log
-    print(f"Started on : {SERVER_PORT}")
 
 
 @app.get("/")
@@ -57,7 +41,6 @@ async def connect(sid, environ, auth):
 
 @sio.event
 async def disconnect(sid):
-    # Decrement counts for any rooms this sid had joined
     rooms = sid_rooms.pop(sid, set())
     for room_id in rooms:
         if room_id in room_counts:
@@ -69,7 +52,6 @@ async def disconnect(sid):
 
 @sio.on("join")
 async def on_join(sid, room_id: str):
-    # Enforce max clients per room
     count = room_counts.get(room_id, 0)
     if count >= MAX_CLIENTS_PER_ROOM:
         await sio.emit("room-full", room_id, to=sid)
@@ -87,7 +69,6 @@ async def on_join(sid, room_id: str):
 
 @sio.on("rtc-message")
 async def on_rtc_message(sid, data):
-    # Expect either a JSON string or a dict with roomId
     room_id = None
     if isinstance(data, str):
         try:
@@ -103,13 +84,11 @@ async def on_rtc_message(sid, data):
     if not room_id:
         return
 
-    # Broadcast to the room except the sender (socket.broadcast.to(room))
     await sio.emit("rtc-message", data, room=room_id, skip_sid=sid)
 
 
 @sio.on("rtc-text")
 async def on_rtc_text(sid, data):
-    """Receive rtc-text, print it, translate via Ollama, then broadcast (except sender)."""
     if isinstance(data, str):
         try:
             payload = json.loads(data)
@@ -124,11 +103,9 @@ async def on_rtc_text(sid, data):
     text = payload.get("text") or payload.get("message") or ""
     print(f"[RTC-TEXT room={room_id or '-'} sid={sid}] {text}")
 
-    # Translate with Ollama (if available). Fallback to original on failure.
     translated = translate_with_ollama(text)
     if translated:
         payload["translatedText"] = translated
-        # Replace text so receivers see translated content directly
         payload["text"] = translated
 
     if room_id:
@@ -136,12 +113,6 @@ async def on_rtc_text(sid, data):
 
 
 def translate_with_ollama(text: str) -> str:
-    """Translate English<->Korean using local Ollama.
-
-    - Model: set with OLLAMA_MODEL (default: 'llama3.1')
-    - Host: set with OLLAMA_HOST (default: 'http://localhost:11434')
-    Returns empty string on error.
-    """
     try:
         host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
         model = os.getenv("OLLAMA_MODEL", "llama3.2")
@@ -168,5 +139,4 @@ def translate_with_ollama(text: str) -> str:
 
 
 if __name__ == "__main__":
-    # Run the ASGI app with uvicorn on the desired port
     uvicorn.run(asgi_app, host="0.0.0.0", port=SERVER_PORT)
