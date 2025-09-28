@@ -13,25 +13,22 @@ class SocketSessionManager:
         self._sio = sio
         self._sid_rooms: Dict[str, Set[str]] = {}
 
-    def get_rooms(self, sid: str) -> Set[str]:
-        """해당 사용자가 속한 room 집합을 반환합니다. (복사본 아님, 내부 세트)
-        호출 측에서 read-only로만 사용하세요.
-        """
-        return self._sid_rooms.get(sid, set())
-
     async def on_connect(self, sid: str) -> None:
-        """연결 시 내부 구조 초기화"""
+        """
+        소켓 접속시 사용자별 room 정보 초기화
+        """
         self._sid_rooms.setdefault(sid, set())
 
     async def on_disconnect(self, sid: str) -> Set[str]:
         """
-        연결 종료 시 사용자가 속한 room 목록을 반환하고, 내부 상태를 정리합니다.
-        실제 방 퇴장은 Socket.IO가 자동으로 처리하므로 여기서는 추적만 제거합니다.
+        소켓 접속 종료시 사용자의 room 정보 제거
         """
         return self._sid_rooms.pop(sid, set())
 
     async def join_room(self, sid: str, room_id: str) -> None:
-        """사용자를 room에 참여시킵니다."""
+        """
+        사용자별 room 정보 추가 후 room 접속
+        """
         if not room_id:
             return
         rooms = self._sid_rooms.setdefault(sid, set())
@@ -39,7 +36,9 @@ class SocketSessionManager:
         await self._sio.enter_room(sid, room_id)
 
     async def leave_room(self, sid: str, room_id: str) -> None:
-        """사용자를 room에서 퇴장시킵니다."""
+        """
+        사용자별 room 정보 제거 후 room 퇴장
+        """
         if not room_id:
             return
         rooms = self._sid_rooms.get(sid)

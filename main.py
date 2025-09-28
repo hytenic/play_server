@@ -60,7 +60,7 @@ async def disconnect(sid):
 @sio.on("join")
 async def on_join(sid, room_id: str):
     """
-    사용자별 room_id 저장 및 소켓 room 입장
+    사용자별 소켓 통신을 위한 room 입장
     """
     await socket_sessions.join_room(sid, room_id)
     print(f"User joined in a room : {room_id}")
@@ -68,6 +68,9 @@ async def on_join(sid, room_id: str):
 
 @sio.on("rtc-message")
 async def on_rtc_message(sid, data):
+    """
+    RTC 통신을 위한 시그널링 데이터 처리
+    """
     room_id = None
     try:
         payload = json.loads(data)
@@ -84,6 +87,9 @@ async def on_rtc_message(sid, data):
 
 @sio.on("rtc-text")
 async def on_rtc_text(sid, data):
+    """
+    클라이언트에서 들어온 stt 텍스트 데이터를 통역 후 전달
+    """
     room_id = data.get("roomId")
     text = data.get("text")
     print(text)
