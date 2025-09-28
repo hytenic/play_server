@@ -30,12 +30,18 @@ agent_manager = AgentManager()
 
 
 @app.get("/")
-async def root():
+async def health_check():
+    """
+    Health check
+    """
     return {"status": "ok"}
 
 
 @sio.event
 async def connect(sid, environ, auth):
+    """
+    소켓 연결 및 사용자별 통역 Agent 생성/실행
+    """
     logging.info(f"connect sid={sid}")
     agent = agent_manager.ensure_agent(sid)
     agent.start()
@@ -43,6 +49,9 @@ async def connect(sid, environ, auth):
 
 @sio.event
 async def disconnect(sid):
+    """
+    소켓 연결 해제 및 사용자별 통역 Agent 종료
+    """
     rooms = sid_rooms.pop(sid, set())
     for room_id in rooms:
         logging.info(f"disconnect, room:{room_id}")
@@ -51,6 +60,9 @@ async def disconnect(sid):
 
 @sio.on("join")
 async def on_join(sid, room_id: str):
+    """
+    사용자별 room_id 저장 및 소켓 room 입장
+    """
     if sid not in sid_rooms:
         sid_rooms[sid] = set()
     sid_rooms[sid].add(room_id)
@@ -79,7 +91,7 @@ async def on_rtc_message(sid, data):
 async def on_rtc_text(sid, data):
     room_id = data.get("roomId")
     text = data.get("text")
-
+    logging.info(text)
     data["text"] = await agent_manager.translate(sid, text)
     if room_id:
         await sio.emit("rtc-text", data, room=room_id, skip_sid=sid)
