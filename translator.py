@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import os
 from typing import Optional, Tuple
 
@@ -71,7 +70,7 @@ class TranslatorAgent:
             resp.raise_for_status()
             data = resp.json()
         except Exception:
-            logging.exception("Failed to call Ollama")
+            print("Failed to call Ollama")
             return ""
         return data.get("response", "").strip()
 

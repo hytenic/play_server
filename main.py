@@ -1,6 +1,4 @@
 import json
-import logging
-from typing import Dict, Set
 
 import socketio
 import uvicorn
@@ -8,10 +6,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent_manager import AgentManager
+from socket_manager import SocketSessionManager
 
 SERVER_PORT = 5004
-
-sid_rooms: Dict[str, Set[str]] = {}
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
@@ -27,6 +24,7 @@ app.add_middleware(
 asgi_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
 agent_manager = AgentManager()
+socket_sessions = SocketSessionManager(sio)
 
 
 @app.get("/")
@@ -42,7 +40,8 @@ async def connect(sid, environ, auth):
     """
     소켓 연결 및 사용자별 통역 Agent 생성/실행
     """
-    logging.info(f"connect sid={sid}")
+    print(f"connect sid={sid}")
+    await socket_sessions.on_connect(sid)
     agent = agent_manager.ensure_agent(sid)
     agent.start()
 
@@ -52,9 +51,9 @@ async def disconnect(sid):
     """
     소켓 연결 해제 및 사용자별 통역 Agent 종료
     """
-    rooms = sid_rooms.pop(sid, set())
+    rooms = await socket_sessions.on_disconnect(sid)
     for room_id in rooms:
-        logging.info(f"disconnect, room:{room_id}")
+        print(f"disconnect, room:{room_id}")
     await agent_manager.release(sid)
 
 
@@ -63,12 +62,8 @@ async def on_join(sid, room_id: str):
     """
     사용자별 room_id 저장 및 소켓 room 입장
     """
-    if sid not in sid_rooms:
-        sid_rooms[sid] = set()
-    sid_rooms[sid].add(room_id)
-
-    await sio.enter_room(sid, room_id)
-    logging.info(f"User joined in a room : {room_id}")
+    await socket_sessions.join_room(sid, room_id)
+    print(f"User joined in a room : {room_id}")
 
 
 @sio.on("rtc-message")
@@ -78,7 +73,7 @@ async def on_rtc_message(sid, data):
         payload = json.loads(data)
     except Exception as e:
         payload = {}
-        logging.error(f"Failed to parse RTC message: {e}")
+        print(f"Failed to parse RTC message: {e}")
 
     room_id = payload.get("roomId")
     if not room_id:
@@ -91,7 +86,7 @@ async def on_rtc_message(sid, data):
 async def on_rtc_text(sid, data):
     room_id = data.get("roomId")
     text = data.get("text")
-    logging.info(text)
+    print(text)
     data["text"] = await agent_manager.translate(sid, text)
     if room_id:
         await sio.emit("rtc-text", data, room=room_id, skip_sid=sid)
